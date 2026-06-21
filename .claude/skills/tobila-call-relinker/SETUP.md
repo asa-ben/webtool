@@ -77,7 +77,8 @@ claude.ai/code/scheduled を開き「New scheduled task」、またはClaude Cod
 | 配置 | script.google.com で新規プロジェクトを作成し、`SendTobilaDrafts.gs` の内容を貼り付け |
 | 識別方法 | 件名に `CONFIG.SUBJECT_MARKERS` のいずれかを含む下書きのみを送信。今後のRoutineは件名に `[tobila-relinker]` を付与（SKILL.md Step 11）。マーカー導入前の既存下書き（`架電の自動紐付け` 等）も既定のマーカー配列で拾える |
 | 実行時刻 | 既定で毎朝7:00 JST（Routineの6:00実行が終わった後）。`setUpTrigger()` を一度実行して時刻トリガーを作成 |
-| 安全策 | 件名マーカー・宛先ドメイン（@a-fukui-law.com）・作成からの経過時間（毎朝トリガー時は12時間以内）の条件を満たす下書きだけ送信。無関係な下書き（例：`【朝のメール棚卸し】`）は対象外 |
+| 安全策 | 件名マーカー・宛先ドメイン（@a-fukui-law.com）・作成からの経過時間（毎朝トリガー時は既定96時間以内）の条件を満たす下書きだけ送信。無関係な下書き（例：`【朝のメール棚卸し】`）は対象外 |
+| 取りこぼし防止 | 経過時間ウィンドウ（`MAX_AGE_HOURS`）は「GASが連続送信に失敗した際に許容する最大ギャップ」。既定96時間で土日＋3連休まで翌営業日に拾い直す。4日超の連休後は `sendTobilaDraftsNow()` を一度手動実行 |
 
 手順：
 1. `SendTobilaDrafts.gs` を新規Apps Scriptプロジェクトに貼り付ける
