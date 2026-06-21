@@ -268,7 +268,7 @@ WhatIdが`a01...`（BasicInfo__c）に変わり、AccountIdが`null`になるこ
 **メール件名の共通ルール：** Gmailコネクタは下書き作成のみで送信ができないため、作成された下書きは別途 `SendTobilaDrafts.gs`（Google Apps Script）が毎朝送信する。GASが対象を確実に識別できるよう、**本スキルが作成する全メールの件名の先頭に必ず `[tobila-relinker]` を付ける**こと。
 
 **(a) 管理者報告（福井先生宛・毎朝1通）**
-- 宛先：fukui@a-fukui-law.com
+- 宛先：fukui.yasutomo@a-fukui-law.com
 - 件名：`[tobila-relinker] 架電紐付け 管理者報告 {YYYY-MM-DD}`
 - 内容：弁護士ごとにセクション分けし、各弁護士の (1)自動紐付け分（事件名・確度・根拠つき。高確度／中確度を明示）、(2)保留分（候補と根拠、または候補なし。手動紐付けが必要な旨を明記）、(3)件外件数 を記載。末尾にロールバックCSVのDriveリンクを記載
 - 処理対象が0件の日も「本日0件」のメールを1通送る（実行確認のため）
@@ -284,7 +284,7 @@ WhatIdが`a01...`（BasicInfo__c）に変わり、AccountIdが`null`になるこ
   - 安川：yasukawa@a-fukui-law.com
   - 牛尾：ushio@a-fukui-law.com
   - 戸井：toi@a-fukui-law.com
-  - 福井：fukui@a-fukui-law.com（(a)の管理者報告に含めれば個別通知は不要）
+  - 福井：fukui.yasutomo@a-fukui-law.com（(a)の管理者報告に含めれば個別通知は不要）
 - 件名：`[tobila-relinker] 【要確認】昨日の架電の自動紐付け（{弁護士名}・中確度{N}件） {YYYY-MM-DD}`
 - 内容：その弁護士の**中確度で自動紐付けした架電のみ**を一覧化。各架電につき (1)通話日時・相手・通話時間、(2)紐付け先基本情報（名称とSalesforceリンク）、(3)紐付け根拠と中確度になった理由（担当不一致・誤認識等）を記載
 - 末尾に定型文：「上記の紐付けが誤っている場合は、Salesforce上で該当Task（活動）のWhatId（関連先）を正しい基本情報に変更してください。チャットで『私は○○です。昨日の架電の紐付けを修正して』と起動して修正することもできます。」
