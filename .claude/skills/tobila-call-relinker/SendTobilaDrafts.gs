@@ -2,45 +2,49 @@
  * SendTobilaDrafts.gs
  *
  * 目的：
- *   毎朝6:00のClaude Code Routine（tobila-call-relinker）は、中確度で自動紐付けした
- *   架電について各弁護士宛の確認通知メール（および福井先生宛の管理者報告）を作成する。
- *   ただしGmailコネクタは下書き作成（createDraft）のみで送信ができないため、これらは
- *   「下書き」のまま残る。本スクリプトは、そのうち本スキルが作成した下書きだけを抽出して
- *   送信する。
+ *   毎朝のClaude Code Routine（tobila-call-relinker）は、中確度で自動紐付けした架電の
+ *   確認通知メール（各弁護士宛）、手動紐付けが必要な架電の通知（各弁護士宛）、および
+ *   管理者報告（福井先生宛）を作成する。ただしGmailコネクタは下書き作成（createDraft）
+ *   のみで送信ができないため、これらは「下書き」のまま残る。
+ *   本スクリプトは、そのうち本スキルが作成した下書きだけを抽出して送信する。
  *
  * 前提：
  *   - 本スクリプトは、Routineが下書きを作成するGoogleアカウント（＝Gmailコネクタで接続して
  *     いる福井先生のアカウント）と同一アカウントのApps Scriptとして実行すること。
  *     別アカウントのドラフトは見えないため送信できない。
- *   - 送信対象は「件名に SUBJECT_MARKER を含む下書き」。SKILL.md Step 11で全メールの件名に
- *     必ず [tobila-relinker] を付ける運用に揃えてある。
  *
- * 使い方：
- *   1. https://script.google.com で新規プロジェクトを作成し、本ファイルを貼り付ける
- *   2. CONFIG.DRY_RUN = true のまま sendTobilaDrafts() を手動実行し、実行ログ（表示→ログ）で
- *      送信予定の宛先・件名を確認する
- *   3. 問題なければ CONFIG.DRY_RUN = false に変更
- *   4. setUpTrigger() を一度だけ実行し、毎朝の時刻トリガーを作成する
- *      （Routineの6:00実行が確実に終わった後に動くよう、既定では7:00に設定）
+ * 関数：
+ *   - sendTobilaDrafts()    … 毎朝の時刻トリガー用。作成からMAX_AGE_HOURS以内の下書きのみ送信
+ *   - sendTobilaDraftsNow() … 手動用。経過時間を無視して該当下書きを一括送信（溜まった分の掃き出し）
+ *   - listDrafts()          … 診断用。全下書きの宛先・件名・日時をログ出力
+ *   - setUpTrigger()        … sendTobilaDrafts() の毎朝トリガーを作成
  *
- * 安全策：
- *   - 件名マーカー一致・宛先ドメイン一致・作成からの経過時間（MAX_AGE_HOURS以内）の
- *     3条件をすべて満たす下書きのみ送信する。無関係な個人下書きや古い下書きは送らない。
- *   - 送信済みの下書きはGmailから消えるため、トリガーの再実行で二重送信されない。
+ * 使い方（初回）：
+ *   1. script.google.com で新規プロジェクトを作成し、本ファイルを貼り付ける
+ *   2. CONFIG.DRY_RUN = true のまま sendTobilaDraftsNow() を実行し、ログで送信予定を確認
+ *   3. 問題なければ CONFIG.DRY_RUN = false にして sendTobilaDraftsNow() を実行（溜まった下書きを送信）
+ *   4. CONFIG.DRY_RUN = false のまま setUpTrigger() を一度実行し、毎朝の自動送信を有効化
  */
 
 var CONFIG = {
-  // true: 送信せずログ出力のみ（初回検証用） / false: 実送信
+  // true: 送信せずログ出力のみ（検証用） / false: 実送信
   DRY_RUN: true,
 
-  // 送信対象とする下書きの件名マーカー（部分一致）。
-  // SKILL.md Step 11で全メールの件名にこの文字列を必ず含めること。
-  SUBJECT_MARKER: '[tobila-relinker]',
+  // 送信対象とする下書きの件名マーカー（いずれかを部分一致で含めば対象）。
+  // 先頭は今後のRoutineが全メールに付与する共通マーカー。以降は導入前の既存下書き用の
+  // 件名パターン。無関係な下書き（例：【朝のメール棚卸し】）は一致しないので送信されない。
+  SUBJECT_MARKERS: [
+    '[tobila-relinker]',              // 今後のRoutineが付与する共通マーカー
+    '架電の自動紐付け',                // 既存：中確度の確認通知（各弁護士宛）
+    '手動紐付けが必要',                // 既存：手動紐付けが必要の通知（各弁護士宛）
+    '架電紐付け・管理者報告'           // 既存：管理者報告（福井先生宛）。不要なら削除可
+  ],
 
   // 安全策：宛先がこのドメインを含む下書きのみ送信する
   ALLOWED_DOMAIN: '@a-fukui-law.com',
 
-  // 安全策：作成からこの時間（時間単位）以内の下書きのみ送信する（古い下書きの誤送信防止）
+  // 安全策：作成からこの時間（時間単位）以内の下書きのみ送信する（毎朝トリガー時の誤送信防止）。
+  // sendTobilaDraftsNow() ではこのチェックは無視される。
   MAX_AGE_HOURS: 12,
 
   // 時刻トリガーの実行時刻（スクリプトのタイムゾーン基準。日本のアカウントは通常JST）
@@ -48,10 +52,17 @@ var CONFIG = {
   TRIGGER_MINUTE: 0
 };
 
-/**
- * 本スキルが作成した下書きを送信する。トリガーから毎朝呼ばれる。
- */
+/** 毎朝の時刻トリガー用：作成からMAX_AGE_HOURS以内の下書きのみ送信 */
 function sendTobilaDrafts() {
+  return _sendTobilaDrafts(false);
+}
+
+/** 手動用：経過時間を無視して該当下書きを一括送信（溜まった下書きの掃き出し） */
+function sendTobilaDraftsNow() {
+  return _sendTobilaDrafts(true);
+}
+
+function _sendTobilaDrafts(ignoreAge) {
   var drafts = GmailApp.getDrafts();
   var now = new Date();
   var sent = 0, skipped = 0, failed = 0;
@@ -64,8 +75,8 @@ function sendTobilaDrafts() {
     var to = msg.getTo() || '';
     var date = msg.getDate();
 
-    // 1. 件名マーカーで本スキルの下書きだけに絞る
-    if (subject.indexOf(CONFIG.SUBJECT_MARKER) === -1) {
+    // 1. 件名マーカー（いずれか）で本スキルの下書きだけに絞る
+    if (!_matchesAnyMarker(subject)) {
       continue;
     }
 
@@ -76,12 +87,14 @@ function sendTobilaDrafts() {
       continue;
     }
 
-    // 3. 作成時刻チェック（古い下書きは送らない）
-    var ageHours = (now.getTime() - date.getTime()) / 3600000;
-    if (ageHours > CONFIG.MAX_AGE_HOURS) {
-      lines.push('SKIP(age ' + ageHours.toFixed(1) + 'h): ' + to + ' | ' + subject);
-      skipped++;
-      continue;
+    // 3. 作成時刻チェック（毎朝トリガー時のみ。手動一括送信では無視）
+    if (!ignoreAge) {
+      var ageHours = (now.getTime() - date.getTime()) / 3600000;
+      if (ageHours > CONFIG.MAX_AGE_HOURS) {
+        lines.push('SKIP(age ' + ageHours.toFixed(1) + 'h): ' + to + ' | ' + subject);
+        skipped++;
+        continue;
+      }
     }
 
     // 送信
@@ -100,9 +113,30 @@ function sendTobilaDrafts() {
   }
 
   var summary = (CONFIG.DRY_RUN ? '[DRY_RUN] ' : '') +
+                (ignoreAge ? '(now) ' : '(daily) ') +
                 'sent=' + sent + ' skipped=' + skipped + ' failed=' + failed;
   Logger.log(summary + '\n' + lines.join('\n'));
   return summary;
+}
+
+function _matchesAnyMarker(subject) {
+  for (var i = 0; i < CONFIG.SUBJECT_MARKERS.length; i++) {
+    if (subject.indexOf(CONFIG.SUBJECT_MARKERS[i]) !== -1) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** 診断用：全下書きの宛先・件名・日時をログ出力する */
+function listDrafts() {
+  var drafts = GmailApp.getDrafts();
+  Logger.log('total drafts: ' + drafts.length);
+  for (var i = 0; i < drafts.length; i++) {
+    var m = drafts[i].getMessage();
+    Logger.log((i + 1) + '. [' + m.getDate() + '] match=' + _matchesAnyMarker(m.getSubject() || '') +
+               ' to=' + m.getTo() + ' | subj=' + m.getSubject());
+  }
 }
 
 /**

@@ -75,17 +75,18 @@ claude.ai/code/scheduled を開き「New scheduled task」、またはClaude Cod
 |---|---|
 | 実行アカウント | **Routineが下書きを作成するのと同じGoogleアカウント**（Gmailコネクタで接続している福井先生のアカウント）。別アカウントでは下書きが見えず送信できない |
 | 配置 | script.google.com で新規プロジェクトを作成し、`SendTobilaDrafts.gs` の内容を貼り付け |
-| 識別方法 | 件名に `[tobila-relinker]` を含む下書きのみを送信（SKILL.md Step 11で全メールに付与） |
+| 識別方法 | 件名に `CONFIG.SUBJECT_MARKERS` のいずれかを含む下書きのみを送信。今後のRoutineは件名に `[tobila-relinker]` を付与（SKILL.md Step 11）。マーカー導入前の既存下書き（`架電の自動紐付け` 等）も既定のマーカー配列で拾える |
 | 実行時刻 | 既定で毎朝7:00 JST（Routineの6:00実行が終わった後）。`setUpTrigger()` を一度実行して時刻トリガーを作成 |
-| 安全策 | 件名マーカー・宛先ドメイン（@a-fukui-law.com）・作成からの経過時間（12時間以内）の3条件をすべて満たす下書きだけ送信 |
+| 安全策 | 件名マーカー・宛先ドメイン（@a-fukui-law.com）・作成からの経過時間（毎朝トリガー時は12時間以内）の条件を満たす下書きだけ送信。無関係な下書き（例：`【朝のメール棚卸し】`）は対象外 |
 
 手順：
 1. `SendTobilaDrafts.gs` を新規Apps Scriptプロジェクトに貼り付ける
-2. `CONFIG.DRY_RUN = true` のまま `sendTobilaDrafts()` を手動実行し、実行ログ（表示→ログ）で送信予定の宛先・件名を確認
-3. 問題なければ `CONFIG.DRY_RUN = false` に変更
-4. `setUpTrigger()` を一度だけ実行して毎朝の時刻トリガーを作成（ログでタイムゾーンがJST/Asia/Tokyoであることを確認）
+2. `CONFIG.DRY_RUN = true` のまま `sendTobilaDraftsNow()` を手動実行し、実行ログ（表示→ログ）で送信予定の宛先・件名を確認（`listDrafts()` で全下書きの一致状況も確認できる）
+3. 問題なければ `CONFIG.DRY_RUN = false` に変更し、`sendTobilaDraftsNow()` を実行（溜まっている下書きを一括送信）
+4. `CONFIG.DRY_RUN = false` のまま `setUpTrigger()` を一度だけ実行して毎朝の時刻トリガーを作成（ログでタイムゾーンがJST/Asia/Tokyoであることを確認）
 5. 翌朝、各弁護士のメールが実際に送信されているか確認
 
+> 注：`sendTobilaDraftsNow()` は経過時間チェックを無視して一括送信する手動用。毎朝の自動送信は経過時間チェックありの `sendTobilaDrafts()`（トリガーが呼ぶ）。
 > 注：将来Gmailコネクタが送信に対応した場合は、SKILL.md Step 11で直接送信に切り替え、本GASは不要になる。
 
 ## 運用イメージ
